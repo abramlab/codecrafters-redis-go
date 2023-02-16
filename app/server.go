@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -20,23 +19,28 @@ func main() {
 		exitWithError(fmt.Errorf("failed to bind to port 6379: %s", err))
 	}
 
-	conn, err := l.Accept()
-	if err != nil {
-		exitWithError(fmt.Errorf("failed to accept connection: %s", err))
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			exitWithError(fmt.Errorf("failed to accept connection: %s", err))
+		}
+		go handleConnection(conn)
 	}
+}
+
+func handleConnection(conn net.Conn) {
+	defer conn.Close()
 
 	for {
 		buf := make([]byte, 1024)
-		_, err := conn.Read(buf)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
+		if _, err := conn.Read(buf); err != nil {
+			if err == io.EOF {
 				break
 			}
 			exitWithError(fmt.Errorf("failed to read from connection: %s", err))
 		}
 		pong := []byte("+PONG\r\n")
-		_, err = conn.Write(pong)
-		if err != nil {
+		if _, err := conn.Write(pong); err != nil {
 			exitWithError(fmt.Errorf("failed to write to connection: %s", err))
 		}
 	}
