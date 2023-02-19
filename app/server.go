@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -42,46 +44,40 @@ func handleConnection(conn net.Conn) {
 
 		fmt.Printf("Raw request: %q\n", string(buf))
 
-		echo, err := parseSimpleEchoCommand(buf)
+		msg, err := ParseFromReader(bufio.NewReader(bytes.NewReader(buf)))
 		if err != nil {
-			errResp := []byte(fmt.Sprintf("-ERR %s: %q\r\n", err, string(buf)))
-			if _, err = conn.Write(errResp); err != nil {
-				exitWithError(fmt.Errorf("failed to write to connection: %s", err))
-			}
+			fmt.Println("Parse request failed:", err.Error())
+			write(conn, fmt.Sprintf("-ERR parse request failed: %q\r\n", string(buf)))
+			continue
+		}
+		if msg.Type != MessageMutli {
+			write(conn, fmt.Sprintf("-ERR unsupported request type: %q\r\n", string(buf)))
 			continue
 		}
 
-		if _, err := conn.Write(echo.response()); err != nil {
-			exitWithError(fmt.Errorf("failed to write to connection: %s", err))
+		switch strings.ToUpper(string(msg.Multi[0].Bulk)) {
+		case "PING":
+			write(conn, "+PONG\r\n")
+		case "ECHO":
+			if len(msg.Multi) != 2 {
+				write(conn, "-ERR wrong number of arguments for 'ECHO' command\r\n")
+				continue
+			}
+			write(conn, fmt.Sprintf("+%s\r\n", msg.Multi[1].Bulk))
+		default:
+			write(conn, "-ERR unknown command\r\n")
 		}
+	}
+}
+
+func write(conn net.Conn, resp string) {
+	_, err := conn.Write([]byte(resp))
+	if err != nil {
+		exitWithError(fmt.Errorf("failed to write to connection: %s", err))
 	}
 }
 
 func exitWithError(err error) {
 	fmt.Println(err.Error())
 	os.Exit(1)
-}
-
-type echoCommand struct {
-	arg string
-}
-
-func (c *echoCommand) response() []byte {
-	return []byte(fmt.Sprintf("+%s\r\n", c.arg))
-}
-
-func parseSimpleEchoCommand(raw []byte) (*echoCommand, error) {
-	parts := bytes.Split(bytes.TrimSuffix(raw, []byte("\r\n")), []byte("\r\n"))
-
-	if len(parts) != 5 {
-		return nil, fmt.Errorf("unsupported command")
-	}
-
-	if parts[0][0] != '*' {
-		return nil, fmt.Errorf("unsupported command")
-	}
-	if !(bytes.Equal(parts[1], []byte("$4")) && bytes.Equal(parts[2], []byte("ECHO"))) {
-		return nil, fmt.Errorf("unsupported command")
-	}
-	return &echoCommand{arg: string(parts[4])}, nil
 }
