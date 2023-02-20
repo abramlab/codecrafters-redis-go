@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+var store = newStorage()
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
@@ -63,7 +65,30 @@ func handleConnection(conn net.Conn) {
 				write(conn, "-ERR wrong number of arguments for 'ECHO' command\r\n")
 				continue
 			}
+
 			write(conn, fmt.Sprintf("+%s\r\n", msg.Multi[1].Bulk))
+		case "SET":
+			if len(msg.Multi) < 3 {
+				write(conn, "-ERR wrong number of arguments for 'SET' command\r\n")
+				continue
+			}
+
+			key, value := string(msg.Multi[1].Bulk), string(msg.Multi[2].Bulk)
+			store.set(key, value)
+			write(conn, "+OK\r\n")
+		case "GET":
+			if len(msg.Multi) != 2 {
+				write(conn, "-ERR wrong number of arguments for 'GET' command\r\n")
+				continue
+			}
+
+			key := string(msg.Multi[1].Bulk)
+			value, ok := store.get(key)
+			if !ok {
+				write(conn, "$-1\r\n")
+				continue
+			}
+			write(conn, fmt.Sprintf("$%d\r\n%s\r\n", len(value), value))
 		default:
 			write(conn, "-ERR unknown command\r\n")
 		}
