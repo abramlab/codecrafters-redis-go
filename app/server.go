@@ -81,7 +81,7 @@ func handleConnection(conn net.Conn) {
 			case 3:
 				store.set(key, value)
 			case 5:
-				if string(msg.Multi[3].Bulk) != "EX" {
+				if string(msg.Multi[3].Bulk) != "px" {
 					write(conn, fmt.Sprintf("-ERR unsupported 'SET' option: %q\r\n", msg.Multi[3].Bulk))
 					continue
 				}
@@ -90,7 +90,7 @@ func handleConnection(conn net.Conn) {
 					write(conn, "-ERR invalid expire time in 'SET' command\r\n")
 					continue
 				}
-				store.setWithExpiration(key, value, time.Duration(expire)*time.Second)
+				store.setWithExpiration(key, value, time.Duration(expire)*time.Millisecond)
 			}
 			write(conn, "+OK\r\n")
 		case "GET":
