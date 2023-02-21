@@ -7,7 +7,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var store = newStorage()
@@ -74,7 +76,22 @@ func handleConnection(conn net.Conn) {
 			}
 
 			key, value := string(msg.Multi[1].Bulk), string(msg.Multi[2].Bulk)
-			store.set(key, value)
+
+			switch len(msg.Multi) {
+			case 3:
+				store.set(key, value)
+			case 5:
+				if string(msg.Multi[3].Bulk) != "EX" {
+					write(conn, fmt.Sprintf("-ERR unsupported 'SET' option: %q\r\n", msg.Multi[3].Bulk))
+					continue
+				}
+				expire, err := strconv.Atoi(string(msg.Multi[4].Bulk))
+				if err != nil {
+					write(conn, "-ERR invalid expire time in 'SET' command\r\n")
+					continue
+				}
+				store.setWithExpiration(key, value, time.Duration(expire)*time.Second)
+			}
 			write(conn, "+OK\r\n")
 		case "GET":
 			if len(msg.Multi) != 2 {
